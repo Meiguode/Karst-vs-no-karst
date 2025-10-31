@@ -1,0 +1,115 @@
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(patchwork)
+
+# Read and process data
+karst_data <- read.csv("Karst_aquifers_with_soil_data.csv")
+non_karst_data <- read.csv("Non_karst_aquifers_with_soil_data.csv")
+
+# Extract coordinates
+karst_data <- karst_data %>%
+  mutate(
+    Latitude = as.numeric(sapply(strsplit(as.character(Site2), " "), function(x) x[1])),
+    Longitude = as.numeric(sapply(strsplit(as.character(Site2), " "), function(x) x[2])),
+    geology = "Karst"
+  )
+
+non_karst_data <- non_karst_data %>%
+  mutate(
+    Latitude = as.numeric(sapply(strsplit(as.character(Site2), " "), function(x) x[1])),
+    Longitude = as.numeric(sapply(strsplit(as.character(Site2), " "), function(x) x[2])),
+    geology = "Non-Karst"
+  )
+
+combined_data <- bind_rows(karst_data, non_karst_data) %>%
+  filter(!is.na(Latitude) & !is.na(Longitude) & !is.na(Biome) & Biome != "")
+
+# Get world map
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Professional color scheme
+biome_colors <- c(
+  "Alpine" = "#0000a2",
+  "Arctic" = "#50ad9f", 
+  "Boreal" = "#bc272d",
+  "Grassland" = "#e9c716",
+  "Mediterranean" = "#8a2be2",
+  "Subtropical" = "#ff7f00",
+  "Temperate" = "#228b22",
+  "Tropical" = "#ff1493"
+)
+
+# Common theme for maps - completely clean
+map_theme <- theme_void() +
+  theme(
+    plot.margin = margin(2, 2, 2, 2),
+    panel.background = element_rect(fill = "white"),
+    plot.background = element_rect(fill = "white", color = NA)
+  )
+
+# Create maps without any titles
+karst_map <- ggplot() +
+  geom_sf(data = world, fill = "gray97", color = "gray60", size = 0.2) +
+  geom_point(data = filter(combined_data, geology == "Karst"), 
+             aes(x = Longitude, y = Latitude, color = Biome),
+             shape = 17, size = 1.8, alpha = 0.85) +
+  scale_color_manual(values = biome_colors) +
+  map_theme +
+  theme(legend.position = "none")
+
+non_karst_map <- ggplot() +
+  geom_sf(data = world, fill = "gray97", color = "gray60", size = 0.2) +
+  geom_point(data = filter(combined_data, geology == "Non-Karst"), 
+             aes(x = Longitude, y = Latitude, color = Biome),
+             shape = 16, size = 1.5, alpha = 0.8) +
+  scale_color_manual(values = biome_colors) +
+  map_theme +
+  theme(legend.position = "none")
+
+# Create clean legend only
+legend_plot <- ggplot() +
+  geom_point(data = combined_data[1:8,], 
+             aes(x = 1:8, y = 1, color = unique(combined_data$Biome)), 
+             size = 0) +
+  scale_color_manual(values = biome_colors, name = NULL) +
+  theme_void() +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 10, margin = margin(r = 15)),
+    legend.key = element_rect(fill = "white"),
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(0, 0, 0, 0),
+    plot.margin = margin(0, 0, 0, 0)
+  ) +
+  guides(color = guide_legend(nrow = 2, byrow = TRUE, 
+                             override.aes = list(size = 4, alpha = 1, shape = 15)))
+
+# Combine with legend in the middle
+final_plot <- karst_map / legend_plot / non_karst_map +
+  plot_layout(heights = c(1, 0.15, 1)) +
+  plot_annotation(
+    theme = theme(
+      plot.background = element_rect(fill = "white", color = NA),
+      plot.margin = margin(5, 5, 5, 5)
+    )
+  )
+
+# Save high-quality output
+ggsave("figure1_clean.tiff", 
+       plot = final_plot,
+       width = 7, height = 8, units = "in", dpi = 300, 
+       compression = "lzw")
+
+ggsave("figure1_clean.pdf", 
+       plot = final_plot,
+       width = 7, height = 8, units = "in")
+
+# Print summary
+cat("=== SITE DISTRIBUTION ===\n")
+print(table(combined_data$Biome, combined_data$geology))
+
+print("Clean figure created successfully! Add your own labels in the final layout.")
