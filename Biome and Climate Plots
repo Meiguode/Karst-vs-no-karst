@@ -1,0 +1,322 @@
+source("0_functions_plot.R") 
+source("4_statistical_prep.R")
+
+# Create figures directory
+if (!dir.exists("figures")) {
+  dir.create("figures")
+}
+
+# Create results directory for CSV files
+if (!dir.exists("results")) {
+  dir.create("results")
+}
+
+# Use the specified color scheme that worked
+main_colors <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f")
+
+# Get actual year range from your data
+year_min <- floor(min(work.data$Study_midyear, na.rm = TRUE))
+year_max <- ceiling(max(work.data$Study_midyear, na.rm = TRUE))
+cat("Your data year range:", year_min, "to", year_max, "\n")
+
+# Calculate midpoint (2006 as requested)
+midpoint_year <- 2006
+cat("Using midpoint year:", midpoint_year, "\n")
+
+# Calculate appropriate breaks for your actual time range
+year_breaks <- seq(year_min, year_max, by = 5)
+
+# Initialize results data frame
+results_df <- data.frame(
+  Analysis = character(),
+  Period = character(),
+  Years = character(),
+  n = integer(),
+  Slope = numeric(),
+  P_value = numeric(),
+  Significant = character(),
+  R_squared = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Function to add results to data frame
+add_results <- function(analysis, period, years, n, slope, p_value, r_squared) {
+  significant <- ifelse(p_value < 0.05, "YES", "NO")
+  new_row <- data.frame(
+    Analysis = analysis,
+    Period = period,
+    Years = years,
+    n = n,
+    Slope = round(slope, 4),
+    P_value = round(p_value, 4),
+    Significant = significant,
+    R_squared = round(r_squared, 4),
+    stringsAsFactors = FALSE
+  )
+  results_df <<- rbind(results_df, new_row)
+}
+
+# Breakpoint detection
+dt = dplyr::select(work.data, Latitude, Rs_annual, Study_midyear)
+lin.mod <- lm(Rs_annual ~ Study_midyear, data = dt)
+segmented.mod <- segmented(lin.mod)
+plot(dt$Study_midyear, dt$Rs_annual, pch = 16, ylim = c(0, 120))
+plot(segmented.mod, add = T)
+segmented.mod
+
+# Adjust window sizes for smaller dataset
+winresult = win_step(dt, var = 'Study_midyear', size = 8)
+winresult = win_step(dt, var = 'Study_midyear', size = 7)
+winresult = win_step(dt, var = 'Study_midyear', size = 6)
+
+# Other method
+res <- br.test(winresult$Slope)
+if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
+res <- bu.test(winresult$Slope)
+if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
+res <- snh.test(winresult$Slope)
+if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
+
+# Test all possible breakpoints within your data range
+break_years <- seq(1998, 2014, by = 1)
+
+for (break_year in break_years) {
+  cat("Break year:", break_year, "\n")
+  before_data <- dplyr::filter(work.data, Study_midyear < break_year)
+  after_data <- dplyr::filter(work.data, Study_midyear >= break_year)
+  
+  if (nrow(before_data) >= 5) {
+    cat("Before break:\n")
+    print(summary(lm(Rs_annual ~ Study_midyear, data = before_data)))
+  }
+  
+  if (nrow(after_data) >= 5) {
+    cat("After break:\n")
+    print(summary(lm(Rs_annual ~ Study_midyear, data = after_data)))
+  }
+  cat("---\n")
+}
+
+# Rs~year in multiple time periods
+time_periods <- list(
+  "1990-2022" = c(1990, 2022),
+  "1990-2000" = c(1990, 2000),
+  "2000-2010" = c(2000, 2010),
+  "2010-2022" = c(2010, 2022),
+  "1990-2006" = c(1990, 2005.999),
+  "2006-2022" = c(2006, 2022)
+)
+
+for (period_name in names(time_periods)) {
+  period_range <- time_periods[[period_name]]
+  period_data <- dplyr::filter(work.data, Study_midyear >= period_range[1] & Study_midyear <= period_range[2])
+  
+  if (nrow(period_data) >= 5) {
+    model <- lm(Rs_annual ~ Study_midyear, data = period_data)
+    model_summary <- summary(model)
+    slope <- coef(model)[2]
+    p_value <- model_summary$coefficients[2,4]
+    r_squared <- model_summary$r.squared
+    
+    add_results("Time Period", period_name, 
+                paste(period_range[1], period_range[2], sep = "-"), 
+                nrow(period_data), slope, p_value, r_squared)
+    
+    cat("TIME PERIOD:", period_name, "\n")
+    cat("Years:", period_range[1], "-", period_range[2], "\n")
+    cat("Data points:", nrow(period_data), "\n")
+    cat("Slope:", round(slope, 2), "\n")
+    cat("p-value:", round(p_value, 3), "\n")
+    cat("R-squared:", round(r_squared, 3), "\n")
+    cat("Significant:", ifelse(p_value < 0.05, "YES", "NO"), "\n\n")
+  } else {
+    cat("TIME PERIOD:", period_name, "- Insufficient data (less than 5 rows)\n\n")
+  }
+}
+
+# Rs~year in two time periods (original)
+Period1 = dplyr::filter(work.data, Study_midyear < midpoint_year)
+cat("Period 1 (1990-2005) data points:", nrow(Period1), "\n")
+
+if (nrow(Period1) >= 5) {
+  model1 <- lm(Rs_annual ~ Study_midyear, data = Period1)
+  model_summary1 <- summary(model1)
+  slope1 <- coef(model1)[2]
+  p_value1 <- model_summary1$coefficients[2,4]
+  r_squared1 <- model_summary1$r.squared
+  
+  add_results("Main Analysis", "Period 1", "1990-2005", nrow(Period1), slope1, p_value1, r_squared1)
+  
+  period1_min <- floor(min(Period1$Study_midyear, na.rm = TRUE))
+  period1_max <- ceiling(max(Period1$Study_midyear, na.rm = TRUE))
+  
+  cat("FIGURE 1a (1990-2005):\n")
+  cat("Years:", period1_min, "-", period1_max, "\n")
+  cat("Slope:", round(slope1, 2), "\n")
+  cat("p-value:", round(p_value1, 3), "\n")
+  cat("Significant:", ifelse(p_value1 < 0.05, "YES", "NO"), "\n\n")
+  
+  p <- ggplot(aes_string(x = "Study_midyear", y = "Rs_annual"), data = Period1) + 
+    geom_point(color = main_colors[1], size = 1, alpha = 0.4, shape = 16) +
+    geom_smooth(method = 'lm', formula = y ~ x, se = FALSE, color = main_colors[1], size = 1.3) +
+    theme_few() +
+    labs(
+      x = "Year",
+      y = expression(paste("R"["s"], " (g C m"^{-2}, " yr"^{-1}, ")"))
+    ) +
+    scale_x_continuous(breaks = seq(period1_min, period1_max, by = 5), limits = c(period1_min, period1_max)) +
+    scale_y_continuous(breaks = c(0, 600, 1200, 1800, 2400, 3000), limits = c(0, 3000)) +
+    theme(text = element_text(size = 8), 
+          panel.border = element_rect(color = "grey3", linewidth = 0.5)) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "in"))
+  
+  ggsave("figures/fig1_a_1990-2005.pdf", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+  ggsave("figures/fig1_a_1990-2005.png", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+  ggsave("figures/fig1_a_1990-2005.tiff", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+}
+
+Period2 = dplyr::filter(work.data, Study_midyear >= midpoint_year)
+cat("Period 2 (2006-2022) data points:", nrow(Period2), "\n")
+
+if (nrow(Period2) >= 5) {
+  model2 <- lm(Rs_annual ~ Study_midyear, data = Period2)
+  model_summary2 <- summary(model2)
+  slope2 <- coef(model2)[2]
+  p_value2 <- model_summary2$coefficients[2,4]
+  r_squared2 <- model_summary2$r.squared
+  
+  add_results("Main Analysis", "Period 2", "2006-2022", nrow(Period2), slope2, p_value2, r_squared2)
+  
+  period2_min <- floor(min(Period2$Study_midyear, na.rm = TRUE))
+  period2_max <- ceiling(max(Period2$Study_midyear, na.rm = TRUE))
+  
+  cat("FIGURE 1b (2006-2022):\n")
+  cat("Years:", period2_min, "-", period2_max, "\n")
+  cat("Slope:", round(slope2, 2), "\n")
+  cat("p-value:", round(p_value2, 3), "\n")
+  cat("Significant:", ifelse(p_value2 < 0.05, "YES", "NO"), "\n\n")
+  
+  p <- ggplot(aes_string(x = "Study_midyear", y = "Rs_annual"), data = Period2) + 
+    geom_point(color = main_colors[2], size = 1, alpha = 0.2, shape = 16) +
+    geom_smooth(method = 'lm', formula = y ~ x, se = FALSE, color = main_colors[2], size = 1.3, linetype = "dashed") +
+    theme_few() +
+    labs(
+      x = "Year",
+      y = expression(paste("R"["s"], " (g C m"^{-2}, " yr"^{-1}, ")"))
+    ) +
+    scale_x_continuous(breaks = seq(period2_min, period2_max, by = 5), limits = c(period2_min, period2_max)) +
+    scale_y_continuous(breaks = c(0, 800, 1600, 2400, 3200), limits = c(0, 3400)) +
+    theme(text = element_text(size = 8), 
+          panel.border = element_rect(color = "grey3", linewidth = 0.5)) +
+    theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "in"))
+  
+  ggsave("figures/fig1_b_2006-2022.pdf", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+  ggsave("figures/fig1_b_2006-2022.png", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+  ggsave("figures/fig1_b_2006-2022.tiff", p, width = 2.2, height = 2, units = 'in', dpi = 900)
+}
+
+# Rs~year over your data range - FIXED BIOME PLOT
+if ("Biome" %in% names(work.data)) {
+  work.data_biome <- work.data %>% 
+    filter(!is.na(Rs_annual) & !is.na(Study_midyear) & !is.na(Biome)) %>%
+    filter(Biome != "" & Biome != " " & Biome != "NA" & Biome != "NaN") %>%
+    filter(!is.nan(Biome))
+  
+  if (nrow(work.data_biome) > 0) {
+    unique_biomes <- unique(work.data_biome$Biome)
+    num_biomes <- length(unique_biomes)
+    cat("Number of unique biomes:", num_biomes, "\n")
+    cat("Biomes in data:", paste(unique_biomes, collapse = ", "), "\n")
+    
+    invalid_biomes <- work.data_biome$Biome[is.na(work.data_biome$Biome) | work.data_biome$Biome == "" | work.data_biome$Biome == " " | work.data_biome$Biome == "NA" | work.data_biome$Biome == "NaN"]
+    if (length(invalid_biomes) > 0) {
+      cat("WARNING: Found", length(invalid_biomes), "invalid biome values. Removing them.\n")
+      work.data_biome <- work.data_biome %>% 
+        filter(!is.na(Biome) & Biome != "" & Biome != " " & Biome != "NA" & Biome != "NaN")
+      unique_biomes <- unique(work.data_biome$Biome)
+      num_biomes <- length(unique_biomes)
+      cat("After cleaning - Number of unique biomes:", num_biomes, "\n")
+      cat("After cleaning - Biomes in data:", paste(unique_biomes, collapse = ", "), "\n")
+    }
+    
+    extended_colors <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f", 
+                         "#8a2be2", "#ff7f00", "#4daf4a", "#984ea3",
+                         "#ffff33", "#a65628", "#f781bf", "#999999")
+    
+    if (num_biomes <= length(extended_colors)) {
+      biome_colors <- extended_colors[1:num_biomes]
+    } else {
+      biome_colors <- viridis::viridis(num_biomes)
+    }
+    
+    model_biome <- lm(Rs_annual ~ Study_midyear, data = work.data_biome)
+    model_summary_biome <- summary(model_biome)
+    slope_biome <- coef(model_biome)[2]
+    p_value_biome <- model_summary_biome$coefficients[2,4]
+    r_squared_biome <- model_summary_biome$r.squared
+    
+    add_results("Biome Overview", "All Biomes", 
+                paste(year_min, year_max, sep = "-"), 
+                nrow(work.data_biome), slope_biome, p_value_biome, r_squared_biome)
+    
+    biome_min <- year_min
+    biome_max <- year_max
+    
+    cat("FIGURE S2 (Biome):\n")
+    cat("Years:", biome_min, "-", biome_max, "\n")
+    cat("Slope:", round(slope_biome, 2), "\n")
+    cat("p-value:", round(p_value_biome, 3), "\n")
+    cat("Significant:", ifelse(p_value_biome < 0.05, "YES", "NO"), "\n\n")
+    
+    # Create the plot with proper syntax - FIXED geom_smooth typo
+    p <- ggplot(work.data_biome, aes(x = Study_midyear, y = Rs_annual)) + 
+      geom_point(aes(fill = Biome), size = 1.2, alpha = 0.9, shape = 21, stroke = 0.1) +
+      geom_smooth(method = 'lm', formula = y ~ x, se = FALSE, size = 0.6, color = "darkorange2") + 
+      theme_few() +
+      labs(
+        x = "Year",
+        y = expression(paste("R"["s"], " (g C m"^{-2}, " yr"^{-1}, ")"))
+      ) +
+      scale_x_continuous(limits = c(biome_min, biome_max), breaks = seq(biome_min, biome_max, by = 5)) +
+      expand_limits(y = 0) +
+      scale_fill_manual(values = biome_colors) +
+      theme(
+        panel.border = element_rect(color = "black"),
+        legend.position = "right",
+        legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        legend.key.size = unit(0.4, "cm"),
+        legend.text = element_text(size = 7),
+        legend.spacing.y = unit(0.1, "cm"),
+        text = element_text(size = 8),
+        plot.margin = unit(c(0.1, 0.5, 0.1, 0.1), "in")
+      ) +
+      guides(fill = guide_legend(ncol = 1, byrow = TRUE))
+    
+    # Save with wider width to accommodate the side legend
+    ggsave("figures/fig_S2_biome.pdf", p, width = 4.5, height = 2.2, units = 'in', dpi = 900)
+    ggsave("figures/fig_S2_biome.png", p, width = 4.5, height = 2.2, units = 'in', dpi = 900)
+    ggsave("figures/fig_S2_biome.tiff", p, width = 4.5, height = 2.2, units = 'in', dpi = 900)
+    cat("Biome plot saved successfully with external legend!\n")
+  } else {
+    cat("No biome data available after filtering NAs\n")
+  }
+} else {
+  cat("Biome column not found in dataset\n")
+}
+
+# Save all results to CSV
+write.csv(results_df, "results/statistical_results.csv", row.names = FALSE)
+cat("All statistical results saved to 'results/statistical_results.csv'\n")
+
+cat("All plots updated successfully!\n")
+cat("Year range used:", year_min, "to", year_max, "\n")
+cat("Midpoint year:", midpoint_year, "\n")
+cat("Color scheme applied to all plots: #0000a2 (blue), #bc272d (red), #e9c716 (yellow), #50ad9f (teal)\n")
+cat("All points use circle shapes (commented triangle options available)\n")
+cat("Files saved in 'figures' directory as PDF, PNG, and TIFF\n")
+cat("Statistical results saved in 'results' directory as CSV\n")
+
+
+
