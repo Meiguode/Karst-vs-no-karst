@@ -5,8 +5,8 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 library(patchwork)
 
-karst_data <- read.csv("Karst_aquifers_with_soil_data.csv")
-non_karst_data <- read.csv("Non_karst_aquifers_with_soil_data.csv")
+karst_data <- read.csv("karst_aquifers_with_soil_data.csv")
+non_karst_data <- read.csv("non_karst_aquifers_with_soil_data.csv")
 
 karst_data <- karst_data %>%
   mutate(
