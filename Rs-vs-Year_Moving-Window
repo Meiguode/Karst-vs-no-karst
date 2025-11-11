@@ -1,5 +1,5 @@
-source("0_functions_plot.R")
-source("4_statistical_prep.R")
+source("functions_plot.R")
+source("statistical_prep.R")
 
 # Moving subset analysis for year windows
 mycolors = colorRampPalette(c("#0000a2", "#bc272d", "#e9c716", "#50ad9f"))
