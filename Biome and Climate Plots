@@ -1,32 +1,25 @@
 source("0_functions_plot.R") 
 source("4_statistical_prep.R")
 
-# Create figures directory
 if (!dir.exists("figures")) {
   dir.create("figures")
 }
 
-# Create results directory for CSV files
 if (!dir.exists("results")) {
   dir.create("results")
 }
 
-# Use the specified color scheme that worked
 main_colors <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f")
 
-# Get actual year range from your data
 year_min <- floor(min(work.data$Study_midyear, na.rm = TRUE))
 year_max <- ceiling(max(work.data$Study_midyear, na.rm = TRUE))
 cat("Your data year range:", year_min, "to", year_max, "\n")
 
-# Calculate midpoint (2006 as requested)
 midpoint_year <- 2006
 cat("Using midpoint year:", midpoint_year, "\n")
 
-# Calculate appropriate breaks for your actual time range
 year_breaks <- seq(year_min, year_max, by = 5)
 
-# Initialize results data frame
 results_df <- data.frame(
   Analysis = character(),
   Period = character(),
@@ -39,7 +32,6 @@ results_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Function to add results to data frame
 add_results <- function(analysis, period, years, n, slope, p_value, r_squared) {
   significant <- ifelse(p_value < 0.05, "YES", "NO")
   new_row <- data.frame(
@@ -56,7 +48,6 @@ add_results <- function(analysis, period, years, n, slope, p_value, r_squared) {
   results_df <<- rbind(results_df, new_row)
 }
 
-# Breakpoint detection
 dt = dplyr::select(work.data, Latitude, Rs_annual, Study_midyear)
 lin.mod <- lm(Rs_annual ~ Study_midyear, data = dt)
 segmented.mod <- segmented(lin.mod)
@@ -64,12 +55,10 @@ plot(dt$Study_midyear, dt$Rs_annual, pch = 16, ylim = c(0, 120))
 plot(segmented.mod, add = T)
 segmented.mod
 
-# Adjust window sizes for smaller dataset
 winresult = win_step(dt, var = 'Study_midyear', size = 8)
 winresult = win_step(dt, var = 'Study_midyear', size = 7)
 winresult = win_step(dt, var = 'Study_midyear', size = 6)
 
-# Other method
 res <- br.test(winresult$Slope)
 if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
 res <- bu.test(winresult$Slope)
@@ -77,7 +66,6 @@ if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
 res <- snh.test(winresult$Slope)
 if (!is.null(res$estimate)) winresult[res$estimate, "win_edge"]
 
-# Test all possible breakpoints within your data range
 break_years <- seq(1998, 2014, by = 1)
 
 for (break_year in break_years) {
@@ -97,7 +85,6 @@ for (break_year in break_years) {
   cat("---\n")
 }
 
-# Rs~year in multiple time periods
 time_periods <- list(
   "1990-2022" = c(1990, 2022),
   "1990-2000" = c(1990, 2000),
@@ -134,7 +121,6 @@ for (period_name in names(time_periods)) {
   }
 }
 
-# Rs~year in two time periods (original)
 Period1 = dplyr::filter(work.data, Study_midyear < midpoint_year)
 cat("Period 1 (1990-2005) data points:", nrow(Period1), "\n")
 
@@ -215,7 +201,6 @@ if (nrow(Period2) >= 5) {
   ggsave("figures/fig1_b_2006-2022.tiff", p, width = 2.2, height = 2, units = 'in', dpi = 900)
 }
 
-# Rs~year over your data range - FIXED BIOME PLOT
 if ("Biome" %in% names(work.data)) {
   work.data_biome <- work.data %>% 
     filter(!is.na(Rs_annual) & !is.na(Study_midyear) & !is.na(Biome)) %>%
@@ -306,7 +291,6 @@ if ("Biome" %in% names(work.data)) {
   cat("Biome column not found in dataset\n")
 }
 
-# Save all results to CSV
 write.csv(results_df, "results/statistical_results.csv", row.names = FALSE)
 cat("All statistical results saved to 'results/statistical_results.csv'\n")
 
@@ -318,8 +302,6 @@ cat("All points use circle shapes (commented triangle options available)\n")
 cat("Files saved in 'figures' directory as PDF, PNG, and TIFF\n")
 cat("Statistical results saved in 'results' directory as CSV\n")
 
-
-# Delta MAP plot - FIXED MISSING PLOT
 if ("delta.Mean.Precip." %in% names(work.data)) {
   work.data_delta_precip <- work.data %>% 
     filter(!is.na(Rs_annual) & !is.na(delta.Mean.Precip.))
@@ -361,7 +343,6 @@ if ("delta.Mean.Precip." %in% names(work.data)) {
   }
 }
 
-# Delta MAT plot - FIXED MISSING PLOT
 if ("delta.Mean.Temp." %in% names(work.data)) {
   work.data_delta_temp <- work.data %>% 
     filter(!is.na(Rs_annual) & !is.na(delta.Mean.Temp.))
@@ -403,15 +384,11 @@ if ("delta.Mean.Temp." %in% names(work.data)) {
   }
 }
 
-# Save updated results to CSV
 write.csv(results_df, "results/statistical_results.csv", row.names = FALSE)
 cat("Updated statistical results saved to 'results/statistical_results.csv'\n")
 
 cat("Delta climate plots completed successfully!\n")
 
-
-#Decade bit
-# Create plots for all time periods - FIXED MISSING PLOTS
 cat("\n=== CREATING PLOTS FOR ALL TIME PERIODS ===\n")
 
 for (period_name in names(time_periods)) {
@@ -480,7 +457,6 @@ for (period_name in names(time_periods)) {
         theme(plot.margin = unit(c(0.1, 0.1, 0.1, 0.1), "in"))
     }
     
-    # Create safe filename
     safe_period_name <- gsub("-", "_", period_name)
     ggsave(paste0("figures/fig_time_period_", safe_period_name, ".pdf"), p, width = 2.2, height = 2, units = 'in', dpi = 900)
     ggsave(paste0("figures/fig_time_period_", safe_period_name, ".png"), p, width = 2.2, height = 2, units = 'in', dpi = 900)
