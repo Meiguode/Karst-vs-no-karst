@@ -15,10 +15,10 @@ if(!dir.exists("results")) dir.create("results")
 if(!dir.exists("debug")) dir.create("debug")
 if(!dir.exists("plots")) dir.create("plots")
 
-GLOBAL_LAND_AREA_KM2 <- 1.35e8  # Total global land area in km²
-G_TO_PG <- 1e-15  # Conversion from grams to Petagrams
-MG_TO_G <- 1e6    # Conversion from Megagrams to grams
-HA_TO_M2 <- 1e4   # Conversion from hectares to m²
+GLOBAL_LAND_AREA_KM2 <- 1.35e8
+G_TO_PG <- 1e-15
+MG_TO_G <- 1e6
+HA_TO_M2 <- 1e4
 
 karst_data <- read.csv("karst_aquifers_with_soil_data.csv", stringsAsFactors = FALSE)
 non_karst_data <- read.csv("non_karst_aquifers_with_soil_data.csv", stringsAsFactors = FALSE)
@@ -35,7 +35,6 @@ srdb <- srdb %>%
     LU_MAP = MAP,
     Longitude = Site2,
     Latitude = Latitude2
-    # SOC_stock is already correctly named in your data
   )
 
 if(all(grepl("_", srdb$Longitude))) {
