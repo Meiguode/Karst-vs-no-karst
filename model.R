@@ -4,7 +4,7 @@ library(dplyr)
 
 workingpath <- getwd()
 dir.create(paste0(workingpath, "/ModelTable"), showWarnings = FALSE)
-res.data <- read.csv("03_processed_data_complete_final_non_karst.csv", check.names = FALSE)
+res.data <- read.csv("complete_data_non_karst.csv", check.names = FALSE)
 res.data <- filter(
   res.data,
   Study_midyear >= 1987,
@@ -69,3 +69,4 @@ write.csv(full.model.anova,
 write.csv(coef(summary(multi.lm)),
           paste0(results_path, "Coefficients_Table_nonKarst.csv"),
           row.names = TRUE)
+# switch for karst (complete_data_karst.csv) and combined (complete_data.csv)
