@@ -42,13 +42,3 @@ res.data[which(res.data$Study_number == 4119),'YearsOfData'] = 1
 
 res.data = filter(res.data, !is.na(Study_midyear)&!is.na(Site2))
 write.csv(res.data,'01_cleandata.csv',row.names=FALSE)
-
-
-
-
-
-
-
-
-
-      
