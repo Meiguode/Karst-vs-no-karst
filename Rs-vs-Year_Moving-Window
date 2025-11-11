@@ -1,22 +1,15 @@
-#fig1
 source("0_functions_plot.R")
 source("4_statistical_prep.R")
 
-# OLS estimator===============================================================================
-### Moving subset analysis for year windows
-
-# Define blue color palette to match karst aquifer map
+# Moving subset analysis for year windows
 mycolors = colorRampPalette(c("#0000a2", "#bc272d", "#e9c716", "#50ad9f"))
 
-# Use dplyr::select to avoid conflicts
 rcdata = dplyr::select(work.data, Latitude, Rs_annual, Study_midyear)
 
-# Initialize variables for the window analysis
 t = q = 10
 p = 1
 i = 1
 
-# Initialize empty vectors to store the results
 ord = c()
 Lat.Area = c()
 Slope = c()
@@ -26,7 +19,6 @@ Num = c()
 Mid.Lat = c()
 Year.range = c()
 
-# Additional vectors for comprehensive statistics
 Mean_Rs = c()
 Median_Rs = c()
 SD_Rs = c()
@@ -34,12 +26,10 @@ SE_Rs = c()
 Intercept = c()
 Adj_R.square = c()
 
-# Adjust the year calculation to focus on the range from 1990 to 2022
 while (t <= max(rcdata$Study_midyear - 1990 + p + 0.1)) {
   i = i + 1
   win = filter(rcdata, Study_midyear - 1990 >= (t - q) & (Study_midyear - 1990) < t)
   
-  # Calculate comprehensive statistics for each window
   if (nrow(win) > 0) {
     eq = lm_eqn(df = win)
     Year.range = c(Year.range, paste0((1990 + t - q), '-', (1990 + t - 1)))
@@ -48,13 +38,11 @@ while (t <= max(rcdata$Study_midyear - 1990 + p + 0.1)) {
     P.value = c(P.value, eq[3])
     Num = c(Num, nrow(win))
     
-    # Calculate additional statistics
     Mean_Rs = c(Mean_Rs, mean(win$Rs_annual, na.rm = TRUE))
     Median_Rs = c(Median_Rs, median(win$Rs_annual, na.rm = TRUE))
     SD_Rs = c(SD_Rs, sd(win$Rs_annual, na.rm = TRUE))
     SE_Rs = c(SE_Rs, sd(win$Rs_annual, na.rm = TRUE) / sqrt(nrow(win)))
     
-    # Fit linear model to get intercept and adjusted R-squared
     if (nrow(win) > 1) {
       lm_model <- lm(Rs_annual ~ Study_midyear, data = win)
       Intercept = c(Intercept, coef(lm_model)[1])
@@ -67,7 +55,6 @@ while (t <= max(rcdata$Study_midyear - 1990 + p + 0.1)) {
   t = t + p
 }
 
-# Create the comprehensive result data frame
 winresult = data.frame(
   Year.range, 
   Slope = as.numeric(Slope),
@@ -82,14 +69,12 @@ winresult = data.frame(
   Intercept = as.numeric(Intercept)
 )
 
-# Add significance stars based on p-value
 winresult$sig = ''
 winresult[winresult$P.value < 0.1, which(colnames(winresult) == 'sig')] = '·'
 winresult[winresult$P.value < 0.05, which(colnames(winresult) == 'sig')] = '*'
 winresult[winresult$P.value < 0.01, which(colnames(winresult) == 'sig')] = '**'
 winresult[winresult$P.value < 0.001, which(colnames(winresult) == 'sig')] = '***'
 
-# Add significance level description
 winresult$Significance_Level = case_when(
   winresult$P.value < 0.001 ~ "p < 0.001",
   winresult$P.value < 0.01 ~ "p < 0.01", 
@@ -98,11 +83,9 @@ winresult$Significance_Level = case_when(
   TRUE ~ "Not significant"
 )
 
-# Filter significant periods (p < 0.05)
 significant_periods <- winresult %>% 
   filter(P.value < 0.05)
 
-# Print significant periods
 cat("=== SIGNIFICANT PERIODS (p < 0.05) ===\n")
 if (nrow(significant_periods) > 0) {
   print(significant_periods)
@@ -110,19 +93,15 @@ if (nrow(significant_periods) > 0) {
   cat("No periods with p < 0.05 significance\n")
 }
 
-# Print all periods with comprehensive statistics
 cat("\n=== ALL PERIODS - COMPREHENSIVE STATISTICS ===\n")
 print(winresult)
 
-# Save comprehensive results to CSV
 write.csv(winresult, "moving_window_comprehensive_stats.csv", row.names = FALSE)
 cat("\nComprehensive statistics saved to: moving_window_comprehensive_stats.csv\n")
 
-# Save significant periods to separate CSV
 write.csv(significant_periods, "significant_periods_stats.csv", row.names = FALSE)
 cat("Significant periods statistics saved to: significant_periods_stats.csv\n")
 
-# Create summary table of significant periods
 if (nrow(significant_periods) > 0) {
   significant_summary <- significant_periods %>%
     dplyr::select(Year.range, Slope, P.value, R.square, Adj_R.square, Num, Mean_Rs, SD_Rs, SE_Rs, Significance_Level)
@@ -130,35 +109,28 @@ if (nrow(significant_periods) > 0) {
   cat("\n=== SUMMARY OF SIGNIFICANT PERIODS ===\n")
   print(significant_summary)
   
-  # Save summary
   write.csv(significant_summary, "significant_periods_summary.csv", row.names = FALSE)
   cat("Significant periods summary saved to: significant_periods_summary.csv\n")
 }
 
-# Continue with the original plotting code...
-# Create a custom theme for the plot
 TS <- theme(legend.position = "none",
             axis.text.x = element_text(angle = 45, size = 6, hjust = 1, vjust = 1),
             panel.background = element_blank(),
             panel.border = element_rect(colour = "grey3", fill = NA, size = 1),
             axis.text.y = element_text(size = 6))
 
-# Create 'star_p' values based on the slope, ensuring the correct number of elements
 star_p = c(as.numeric(Slope)[1:7] + 1, 
            as.numeric(Slope)[8:12] - 3, 
            as.numeric(Slope)[13:18] + 1, 
            as.numeric(Slope)[19:22] + 1)
 
-# Define the geom_text layers for the plot
 star <- geom_text(aes(x = Year.range, y = star_p, label = sig), size = 5)
 winresult$Num.italic = paste0('italic(', winresult$Num, ')')
 count <- geom_text(aes(x = Year.range, y = 54, label = Num.italic), size = 2, parse = TRUE)
 
-# Set color scale and y-axis limits
 SFM = scale_fill_manual(values = mycolors(nrow(winresult)))
 SYC = scale_y_continuous(breaks = c(-15, 0, 15, 30, 45), limits = c(-15, 55))
 
-# Create the barplot with proper axis labels
 barplot = ggplot(winresult, aes(x = Year.range, y = Slope)) + 
   geom_bar(aes(fill = Year.range), stat = "identity", color = "navy", linewidth = 0.2) +  # Blue outline
   TS +  # Apply custom theme
@@ -170,8 +142,7 @@ barplot = ggplot(winresult, aes(x = Year.range, y = Slope)) +
     x = "Year",
     y = expression(paste(Delta, "R"["s"], " (g C m"^{-2}, " yr"^{-2}, ")"))
   ) +
-  #ggtitle("(d)") +  # Add title
-  # Additional styling to match your karst map aesthetic
+  #ggtitle("(d)") +
   theme(
     plot.background = element_rect(fill = "white", color = NA),
     panel.grid.major = element_blank(),
@@ -180,18 +151,12 @@ barplot = ggplot(winresult, aes(x = Year.range, y = Slope)) +
     axis.title.y = element_text(size = 8, margin = margin(r = 5))
   )
 
-# Create the 'figures' folder if it doesn't exist
 if (!dir.exists("figures")) {
   dir.create("figures")
 }
 
-# Save the plot as a PDF
 ggsave("figures/fig1_d.pdf", plot = barplot, width = 6.5, height = 2, units = 'in', dpi = 900)
-
-# Save the plot as a PNG (additional format requested)
 ggsave("figures/fig1_d.png", plot = barplot, width = 6.5, height = 2, units = 'in', dpi = 900)
-
-# Also save as high-resolution TIFF for publications
 ggsave("figures/fig1_d.tiff", plot = barplot, width = 6.5, height = 2, units = 'in', dpi = 900, 
        compression = "lzw")
 
