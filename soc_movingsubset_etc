@@ -1,10 +1,7 @@
-source("0_functions_plot.R")
-source("4_statistical_prep.R")
+source("functions_plot.R")
+source("statistical_prep.R")
 
-## Moving subset analysis for SOC windows
-
-# Define blue color palette to match karst aquifer map
-cols <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f")  # Light to dark blue gradient
+cols <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f")
 mycolors <- colorRampPalette(cols)
 
 rcdata = dplyr::select(work.data, SOC_stock, Rs_annual, Study_midyear) 
@@ -40,7 +37,7 @@ winresult$P.value = as.numeric(P.value)
 winresult$Num = Num
 winresult$Mid.SOC = Mid.SOC
 
-winresult$SOC.Area <- factor(winresult$SOC.Area, levels = c(winresult$SOC.Area))  # prevent the reorder of levels 
+winresult$SOC.Area <- factor(winresult$SOC.Area, levels = c(winresult$SOC.Area))
 winresult$sig = ''
 winresult[winresult$P.value < 0.1, which(colnames(winresult) == 'sig')] = ''
 winresult[winresult$P.value < 0.05, which(colnames(winresult) == 'sig')] = '*'
@@ -54,11 +51,9 @@ TS <- theme(text = element_text(size = 6),
             panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5),
             axis.text.y = element_text(size = 6))
 
-# FIXED: Dynamic star_p calculation based on actual data length
 n_rows <- nrow(winresult)
-star_p <- as.numeric(Slope)  # Start with actual slope values
+star_p <- as.numeric(Slope)
 
-# Apply adjustments based on position in the sequence
 if (n_rows >= 11) {
   star_p[1:11] <- star_p[1:11] - 4.5
 }
@@ -75,7 +70,6 @@ count <- geom_text(aes(x = SOC.Area, y = 100, label = Num.italic), size = 1.7, p
 
 SFM = scale_fill_manual(values = mycolors(nrow(winresult)))
 
-# Create the barplot with proper axis labels
 barplot = ggplot(winresult, aes(x = SOC.Area, y = Slope)) + 
   geom_bar(aes(fill = SOC.Area), stat = "identity", alpha = 0.8, color = "navy", linewidth = 0.1) +
   TS + 
@@ -95,12 +89,10 @@ barplot = ggplot(winresult, aes(x = SOC.Area, y = Slope)) +
     axis.title.y = element_text(size = 6, margin = margin(r = 2))
   )
 
-# Create the 'figures' folder if it doesn't exist
 if (!dir.exists("figures")) {
   dir.create("figures")
 }
 
-# Save the plot
 ggsave("figures/fig3_c.pdf", barplot, width = 6.5, height = 2, units = 'in', dpi = 900)
 ggsave("figures/fig3_c.png", barplot, width = 6.5, height = 2, units = 'in', dpi = 900)
 ggsave("figures/fig3_c.tiff", barplot, width = 6.5, height = 2, units = 'in', dpi = 900, compression = "lzw")
@@ -114,33 +106,14 @@ cat("- figures/fig3_c.pdf\n")
 cat("- figures/fig3_c.png\n")
 cat("- figures/fig3_c.tiff\n")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Rs~year in SOC intervals with blue color scheme and proper labels
-
-# Define blue color palette
-#blue_colors <- c('#E6F3FF', '#80BFFF', '#4DA6FF', '#0073E6')  # Light to dark blue
+#blue_colors <- c('#E6F3FF', '#80BFFF', '#4DA6FF', '#0073E6')
 
 blue_colors <- c('#1B4F72', '#2874A6', '#5DADE2', '#85C1E9')
 
-# Get the actual year range from your data
 year_min <- floor(min(work.data$Study_midyear, na.rm = TRUE))
 year_max <- ceiling(max(work.data$Study_midyear, na.rm = TRUE))
 cat("Actual year range in your data:", year_min, "to", year_max, "\n")
 
-# Calculate appropriate breaks for your time range
 year_breaks <- seq(1990, 2020, by = 10)  # 1990, 2000, 2010, 2020
 
 # 0-100
@@ -233,10 +206,6 @@ cat("- SOC_100-180.pdf/png\n")
 cat("- SOC_180-270.pdf/png\n")
 cat("- SOC_270+.pdf/png\n")
 
-
-
-
-
 # SOC interval analysis with time period breakdown
 # Define time periods including full period
 time_periods <- list(
@@ -246,7 +215,6 @@ time_periods <- list(
   list(name = "1990-2022", start = 1990, end = 2022)
 )
 
-# Create SOC intervals
 soc_intervals <- list(
   list(name = "SOC 0-100 g C m⁻²", data = SOC1),
   list(name = "SOC 100-180 g C m⁻²", data = SOC2),
@@ -254,7 +222,6 @@ soc_intervals <- list(
   list(name = "SOC 270+ g C m⁻²", data = SOC4)
 )
 
-# Function to extract regression results
 extract_regression_results <- function(soc_data, interval_name) {
   if(nrow(soc_data) > 2) {
     model <- lm(Rs_annual ~ Study_midyear, data = soc_data)
@@ -296,14 +263,12 @@ analyze_time_period <- function(soc_data, interval_name, period) {
   return(NULL)
 }
 
-# 1. Full period analysis for each SOC interval
 results_full <- do.call(rbind, lapply(1:4, function(i) {
   extract_regression_results(soc_intervals[[i]]$data, soc_intervals[[i]]$name)
 }))
 
 write.csv(results_full, "SOC_interval_full_period_results.csv", row.names = FALSE)
 
-# 2. Time period analysis for each SOC interval
 time_period_results <- do.call(rbind, lapply(1:4, function(i) {
   soc_interval <- soc_intervals[[i]]
   period_results <- do.call(rbind, lapply(time_periods, function(period) {
@@ -312,17 +277,14 @@ time_period_results <- do.call(rbind, lapply(1:4, function(i) {
   period_results
 }))
 
-# Save individual time period files
 for(period in time_periods) {
   period_data <- time_period_results %>% filter(Time_Period == period$name)
   filename <- paste0("SOC_interval_", gsub("-", "_", period$name), "_results.csv")
   write.csv(period_data, filename, row.names = FALSE)
 }
 
-# 3. Comprehensive results (all periods combined)
 write.csv(time_period_results, "SOC_interval_regression_results_comprehensive.csv", row.names = FALSE)
 
-# 4. Detailed summary with additional statistics
 detailed_summary <- do.call(rbind, lapply(1:4, function(i) {
   soc_data <- soc_intervals[[i]]$data
   model <- lm(Rs_annual ~ Study_midyear, data = soc_data)
@@ -345,13 +307,11 @@ detailed_summary <- do.call(rbind, lapply(1:4, function(i) {
 
 write.csv(detailed_summary, "SOC_interval_detailed_summary.csv", row.names = FALSE)
 
-# 5. Summary table (pivot format)
 summary_table <- time_period_results %>%
   select(SOC_Interval, Time_Period, Slope, P_Value, Significant, N_Observations, R_Squared)
 
 write.csv(summary_table, "SOC_interval_summary_table.csv", row.names = FALSE)
 
-# 6. Overall summary statistics
 soc_summary <- results_full %>%
   mutate(SOC_Interval = gsub("SOC ", "", SOC_Interval)) %>%
   group_by(SOC_Interval) %>%
@@ -364,7 +324,6 @@ soc_summary <- results_full %>%
 
 write.csv(soc_summary, "SOC_interval_summary.csv", row.names = FALSE)
 
-# 7. Time period summary
 time_summary <- time_period_results %>%
   group_by(Time_Period) %>%
   summarise(
@@ -376,7 +335,6 @@ time_summary <- time_period_results %>%
 
 write.csv(time_summary, "SOC_time_period_summary.csv", row.names = FALSE)
 
-# 8. Comprehensive time period analysis with additional metrics
 comprehensive_time_analysis <- do.call(rbind, lapply(1:4, function(i) {
   soc_interval <- soc_intervals[[i]]
   do.call(rbind, lapply(time_periods, function(period) {
@@ -413,24 +371,3 @@ comprehensive_time_analysis <- do.call(rbind, lapply(1:4, function(i) {
 }))
 
 write.csv(comprehensive_time_analysis, "SOC_time_period_comprehensive_results.csv", row.names = FALSE)
-
-# Print completion message
-cat("SOC interval analysis completed with time periods:\n")
-cat("- 1990-2000\n")
-cat("- 2000-2010\n")
-cat("- 2010-2022\n")
-cat("- 1990-2022 (Full period)\n")
-cat("\nFiles generated:\n")
-cat("- SOC_interval_full_period_results.csv\n")
-cat("- SOC_interval_1990_2000_results.csv\n")
-cat("- SOC_interval_2000_2010_results.csv\n")
-cat("- SOC_interval_2010_2022_results.csv\n")
-cat("- SOC_interval_1990_2022_results.csv\n")
-cat("- SOC_interval_regression_results_comprehensive.csv\n")
-cat("- SOC_interval_detailed_summary.csv\n")
-cat("- SOC_interval_summary_table.csv\n")
-cat("- SOC_interval_summary.csv\n")
-cat("- SOC_time_period_summary.csv\n")
-cat("- SOC_time_period_comprehensive_results.csv\n")
-
-
