@@ -1,5 +1,5 @@
-source("0_functions_plot.R") 
-source("4_statistical_prep.R")
+source("functions_plot.R") 
+source("statistical_prep.R")
 
 if (!dir.exists("figures")) {
   dir.create("figures")
