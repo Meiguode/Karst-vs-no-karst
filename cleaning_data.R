@@ -1,4 +1,4 @@
-source("0_functions_plot.R")
+source("functions_plot.R")
 workingpath = getwd()
 
 res.data <- read.delim("srdb-data.csv", sep = ",", stringsAsFactors = FALSE, check.names = FALSE)
