@@ -1,21 +1,17 @@
-# Culled from Lei et al. 2021
-library('ggplot2')
-library('RColorBrewer')
-library('dplyr') 
+library('dplyr')
+library('tidyr')
 library("Hmisc")
 library('magrittr')
-library('tidyr')
 library('luzlogr')
-library('R.utils')
 library('assertthat')
 library('ggthemes')
 library("segmented")
 library("trend")
+library('R.utils')
 library("mblm")
+library('ggplot2')
+library('RColorBrewer')
 
-
-###-----------------------------------
-#label year periods
 labelLat <- function(x){
   if (abs(x) <= 30){x = "0-30"} 
   else if (abs(x) <= 50){x = "30-50"} 
@@ -52,8 +48,6 @@ labelSOC <- function(x){
   else if (x <= 320){x = "181-320"}
   else {x = "320-"}
   return(x)}
-#Extract model coefficients
-###-------------------------------
 lm.cof <- function(df,y,x){
   Eq = as.formula(paste0(y,'~',x))
   m <- summary(lm(Eq, df))
@@ -68,8 +62,6 @@ model.cof <- function(mdata){
   return(output)
 }
 
-###annote equation function in plot
-###-------------------------------
 lm_eqn <- function(df){
   m <- lm(df[,2] ~ df[,3], df);
   eq=c(a = format(coef(m)[2], digits = 2),
@@ -85,7 +77,7 @@ mblm_eqn <- function(df){
        p = format(summary(m)$coefficients[2,4],digits = 2))
   return(eq)
 }
-# win_step. enlarge the win step by step
+
 win_step = function(dt,var,step=1,size=10){
   
   win_left=floor(min(dt[[var]]))
@@ -96,7 +88,6 @@ win_step = function(dt,var,step=1,size=10){
   # win_edge: the right edge of win
   while(win_right<= max(dt[[var]])){
     
-    # process windata
     win_data=dt[dt[[var]] >= win_left & dt[[var]] < win_right,] # included the data within edge
     win_range=c(win_range,paste0(win_left,'-',(win_right-1)))
     win_edge = c(win_edge,(win_right-1)) %>% as.numeric(.)
@@ -107,7 +98,6 @@ win_step = function(dt,var,step=1,size=10){
     R.square=c(R.square,eq[2])
     P.value=c(P.value,eq[3])
     Num = c(Num,nrow(win_data))
-    # 
     #win_left=win_left+step
     win_right=win_right+step
   }
