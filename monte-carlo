@@ -1,3 +1,5 @@
+#This script is modified from Lei et al (2021).
+
 library(dplyr)
 library(reshape2)
 library(ggplot2)
@@ -6,9 +8,6 @@ library(sp)
 library(geosphere)
 library(gridExtra)
 
-# -------------------------------
-# CONFIGURATION
-# -------------------------------
 transcript <- FALSE
 mc_runs <- 100
 
@@ -16,15 +15,11 @@ if(!dir.exists("results")) dir.create("results")
 if(!dir.exists("debug")) dir.create("debug")
 if(!dir.exists("plots")) dir.create("plots")
 
-# Global constants
 GLOBAL_LAND_AREA_KM2 <- 1.35e8  # Total global land area in km²
 G_TO_PG <- 1e-15  # Conversion from grams to Petagrams
 MG_TO_G <- 1e6    # Conversion from Megagrams to grams
 HA_TO_M2 <- 1e4   # Conversion from hectares to m²
 
-# -------------------------------
-# DATA LOADING & PREPROCESSING
-# -------------------------------
 karst_data <- read.csv("karst_aquifers_with_soil_data.csv", stringsAsFactors = FALSE)
 non_karst_data <- read.csv("non_karst_aquifers_with_soil_data.csv", stringsAsFactors = FALSE)
 
@@ -43,7 +38,6 @@ srdb <- srdb %>%
     # SOC_stock is already correctly named in your data
   )
 
-# Handle coordinates - FIXED FOR YOUR FORMAT "35.9_98-9"
 if(all(grepl("_", srdb$Longitude))) {
   coords <- strsplit(srdb$Longitude, "_")
   srdb$Longitude <- sapply(coords, function(x) as.numeric(x[1]))
@@ -56,30 +50,22 @@ if(all(grepl("_", srdb$Longitude))) {
 cat("Coordinate range - Longitude:", range(srdb$Longitude, na.rm=TRUE), "\n")
 cat("Coordinate range - Latitude:", range(srdb$Latitude, na.rm=TRUE), "\n")
 
-# Anomalies
 srdb$T_anomaly <- srdb$Mean.Temp. - srdb$LU_MAT
 srdb$P_anomaly <- srdb$Mean.Precip. - srdb$LU_MAP
 
 srdb <- srdb[srdb$Study_midyear >= 1990 & srdb$Study_midyear <= 2022, ]
 
-# -------------------------------
-# DATA QUALITY CHECKS & CLEANING
-# -------------------------------
-cat("=== DATA QUALITY CHECKS ===\n")
 cat("Original data points:", nrow(srdb), "\n")
 cat("Rs_annual range:", range(srdb$Rs_annual, na.rm=TRUE), "g C/m²/year\n")
 cat("SOC_stock range:", range(srdb$SOC_stock, na.rm=TRUE), "Mg C/ha\n")
 
-# Convert SOC_stock from Mg C/ha to g C/m² for consistency
 # 1 Mg C/ha = 100 g C/m² (since 1 Mg = 1e6 g, 1 ha = 1e4 m², so 1e6/1e4 = 100)
 srdb$SOC_stock_g_m2 <- srdb$SOC_stock * 100
 cat("SOC_stock range converted:", range(srdb$SOC_stock_g_m2, na.rm=TRUE), "g C/m²\n")
 
-# Check realistic values
 cat("Typical SOC_stock range: 20-400 Mg C/ha (2000-40000 g C/m²)\n")
 cat("Typical Rs_annual range: 200-2000 g C/m²/year\n")
 
-# Remove extreme outliers
 q99_rs <- quantile(srdb$Rs_annual, 0.99, na.rm=TRUE)
 q01_rs <- quantile(srdb$Rs_annual, 0.01, na.rm=TRUE)
 q99_soc <- quantile(srdb$SOC_stock, 0.99, na.rm=TRUE)
@@ -88,7 +74,6 @@ q01_soc <- quantile(srdb$SOC_stock, 0.01, na.rm=TRUE)
 srdb <- srdb[srdb$Rs_annual <= q99_rs & srdb$Rs_annual >= q01_rs & 
                srdb$SOC_stock <= q99_soc & srdb$SOC_stock >= q01_soc, ]
 
-# Remove rows with missing critical values
 srdb <- srdb[!is.na(srdb$LU_MAT) & !is.na(srdb$LU_MAP) & !is.na(srdb$Study_midyear) & 
                !is.na(srdb$Longitude) & !is.na(srdb$Latitude) & !is.na(srdb$SOC_stock), ]
 
@@ -98,12 +83,10 @@ cat("Final SOC_stock range:", range(srdb$SOC_stock, na.rm=TRUE), "Mg C/ha\n")
 cat("Mean Rs_annual:", mean(srdb$Rs_annual, na.rm=TRUE), "g C/m²/year\n")
 cat("Mean SOC_stock:", mean(srdb$SOC_stock, na.rm=TRUE), "Mg C/ha\n")
 
-# Check SOC_stock-Rs relationship
 cat("\n=== SOC_STOCK-Rs RELATIONSHIP ===\n")
 cor_soc_rs <- cor(srdb$SOC_stock, srdb$Rs_annual, use="complete.obs")
 cat("Correlation between SOC_stock and Rs_annual:", round(cor_soc_rs, 3), "\n")
 
-# Check by rock type
 karst_soc <- mean(srdb$SOC_stock[srdb$rock_type_label == "Karst"], na.rm=TRUE)
 nonkarst_soc <- mean(srdb$SOC_stock[srdb$rock_type_label == "Non-Karst"], na.rm=TRUE)
 karst_rs <- mean(srdb$Rs_annual[srdb$rock_type_label == "Karst"], na.rm=TRUE)
@@ -112,15 +95,11 @@ nonkarst_rs <- mean(srdb$Rs_annual[srdb$rock_type_label == "Non-Karst"], na.rm=T
 cat("Karst - Mean SOC_stock:", round(karst_soc, 2), "Mg C/ha, Mean Rs:", round(karst_rs, 2), "g C/m²/year\n")
 cat("Non-Karst - Mean SOC_stock:", round(nonkarst_soc, 2), "Mg C/ha, Mean Rs:", round(nonkarst_rs, 2), "g C/m²/year\n")
 
-# -------------------------------
-# CALCULATE AREA PERCENTAGES WITH SOC-BASED SCALING
-# -------------------------------
 calculate_cell_area_km2 <- function(lat, lon) {
   # Standard 0.5° grid cell area approximation
   cell_width_km <- 55.5  # approx 0.5° at equator
   cell_height_km <- 55.5
   
-  # Adjust for latitude
   lat_adj <- cos(abs(lat) * pi / 180)
   area_km2 <- cell_width_km * cell_height_km * max(lat_adj, 0.3)
   
@@ -129,7 +108,6 @@ calculate_cell_area_km2 <- function(lat, lon) {
 
 srdb$cell_area_km2 <- mapply(calculate_cell_area_km2, srdb$Latitude, srdb$Longitude)
 
-# Calculate total area represented by each rock type
 karst_srdb <- srdb[srdb$rock_type_label == "Karst", ]
 nonkarst_srdb <- srdb[srdb$rock_type_label == "Non-Karst", ]
 
@@ -137,49 +115,38 @@ total_karst_area <- sum(karst_srdb$cell_area_km2, na.rm=TRUE)
 total_nonkarst_area <- sum(nonkarst_srdb$cell_area_km2, na.rm=TRUE)
 total_sampled_area <- total_karst_area + total_nonkarst_area
 
-# Calculate actual percentages from our data
 karst_area_fraction <- total_karst_area / total_sampled_area
 nonkarst_area_fraction <- total_nonkarst_area / total_sampled_area
 
-cat("\n=== AREA CALCULATIONS FROM OUR DATASET ===\n")
 cat("Total karst area sampled:", round(total_karst_area), "km²\n")
 cat("Total non-karst area sampled:", round(total_nonkarst_area), "km²\n")
 cat("Total area sampled:", round(total_sampled_area), "km²\n")
 cat("Karst fraction in our data:", round(karst_area_fraction * 100, 2), "%\n")
 cat("Non-karst fraction in our data:", round(nonkarst_area_fraction * 100, 2), "%\n")
 
-# Calculate SOC-based scaling factors
-# Use SOC stock as a weighting factor for better global scaling
 total_karst_soc <- sum(karst_srdb$SOC_stock * karst_srdb$cell_area_km2, na.rm=TRUE)
 total_nonkarst_soc <- sum(nonkarst_srdb$SOC_stock * nonkarst_srdb$cell_area_km2, na.rm=TRUE)
 total_sampled_soc <- total_karst_soc + total_nonkarst_soc
 
-# SOC-based area fractions (weighted by SOC content)
 karst_soc_fraction <- total_karst_soc / total_sampled_soc
 nonkarst_soc_fraction <- total_nonkarst_soc / total_sampled_soc
 
-cat("\n=== SOC-BASED SCALING FACTORS ===\n")
 cat("Total karst SOC stock in sampled area:", round(total_karst_soc), "Mg C\n")
 cat("Total non-karst SOC stock in sampled area:", round(total_nonkarst_soc), "Mg C\n")
 cat("Karst SOC fraction:", round(karst_soc_fraction * 100, 2), "%\n")
 cat("Non-karst SOC fraction:", round(nonkarst_soc_fraction * 100, 2), "%\n")
 
-# Use SOC-weighted areas for more realistic global scaling
 karst_global_area_soc <- GLOBAL_LAND_AREA_KM2 * karst_soc_fraction
 nonkarst_global_area_soc <- GLOBAL_LAND_AREA_KM2 * nonkarst_soc_fraction
 
 KARST_AREA_FRACTION_SOC <- karst_global_area_soc / GLOBAL_LAND_AREA_KM2
 NONKARST_AREA_FRACTION_SOC <- nonkarst_global_area_soc / GLOBAL_LAND_AREA_KM2
 
-cat("\n=== SOC-WEIGHTED GLOBAL AREA ESTIMATES ===\n")
 cat("Global karst area (SOC-weighted):", round(karst_global_area_soc), "km² (", 
     round(KARST_AREA_FRACTION_SOC * 100, 2), "% of global land)\n")
 cat("Global non-karst area (SOC-weighted):", round(nonkarst_global_area_soc), "km² (", 
     round(NONKARST_AREA_FRACTION_SOC * 100, 2), "% of global land)\n")
 
-# -------------------------------
-# IMPROVED MODEL BUILDING WITH SOC_STOCK
-# -------------------------------
 build_soc_improved_model <- function(data, dataset_name) {
   cat("\nBuilding SOC-improved model for", dataset_name, "-", nrow(data), "observations\n")
   
@@ -187,19 +154,15 @@ build_soc_improved_model <- function(data, dataset_name) {
     stop("Insufficient data for modeling: ", nrow(data), " observations")
   }
   
-  # Use log transformation for better normality
   data$log_Rs <- log(data$Rs_annual)
   data$log_SOC <- log(data$SOC_stock + 1)  # +1 to avoid log(0)
   
-  # Remove infinite values
   data <- data[is.finite(data$log_Rs) & is.finite(data$log_SOC), ]
   
   if(nrow(data) < 5) {
     stop("Insufficient data after transformations: ", nrow(data), " observations")
   }
   
-  # Build model with SOC_stock as key predictor
-  # Simple but robust model focusing on SOC-stock relationship
   formula <- log_Rs ~ log_SOC + LU_MAT + LU_MAP + Study_midyear
   
   cat("Model formula:", deparse(formula), "\n")
@@ -209,7 +172,6 @@ build_soc_improved_model <- function(data, dataset_name) {
   sm <- summary(model)
   cat("Model R²:", round(sm$r.squared, 3), "\n")
   
-  # Check SOC coefficient
   if("log_SOC" %in% rownames(sm$coefficients)) {
     soc_coef <- sm$coefficients["log_SOC", ]
     cat("SOC_stock coefficient:", round(soc_coef[1], 4), "p-value:", round(soc_coef[4], 4))
@@ -223,22 +185,17 @@ build_soc_improved_model <- function(data, dataset_name) {
   return(model)
 }
 
-# Build models
 cat("\n=== BUILDING IMPROVED MODELS ===\n")
 m_karst <- build_soc_improved_model(karst_srdb, "Karst")
 m_nonkarst <- build_soc_improved_model(nonkarst_srdb, "Non-Karst") 
 m_combined <- build_soc_improved_model(srdb, "Combined")
 
-# -------------------------------
-# SOC-CORRECTED FLUX CALCULATION
-# -------------------------------
 calculate_global_flux_soc_corrected <- function(model, data, dataset_name, rock_type) {
   cat("\n---", dataset_name, "SOC-corrected Flux Calculation ---\n")
   
   years <- sort(unique(data$Study_midyear))
   cat("Years with data:", length(years), "\n")
   
-  # Use SOC-weighted global areas
   if(rock_type == "Karst") {
     global_area_km2 <- karst_global_area_soc
     cat("Global KARST area (SOC-weighted):", round(global_area_km2), "km²\n")
@@ -250,7 +207,6 @@ calculate_global_flux_soc_corrected <- function(model, data, dataset_name, rock_
     cat("Global COMBINED area:", round(global_area_km2), "km²\n")
   }
   
-  # Calculate flux with SOC constraints
   yearly_flux_density <- numeric(length(years))
   names(yearly_flux_density) <- years
   
@@ -273,13 +229,11 @@ calculate_global_flux_soc_corrected <- function(model, data, dataset_name, rock_
     }
   }
   
-  # Convert to global flux (Pg C/year)
   global_flux_pg <- yearly_flux_density * global_area_km2 * 1e6 * G_TO_PG
   
   cat("Flux density range:", round(range(yearly_flux_density, na.rm=TRUE), 1), "g C/m²/year\n")
   cat("Global flux range:", round(range(global_flux_pg, na.rm=TRUE), 1), "Pg C/year\n")
   
-  # Ecological reality check
   mean_flux_density <- mean(yearly_flux_density, na.rm=TRUE)
   if(mean_flux_density < 300 || mean_flux_density > 1500) {
     cat("⚠ Flux density outside typical range (300-1500 g C/m²/year)\n")
@@ -288,9 +242,6 @@ calculate_global_flux_soc_corrected <- function(model, data, dataset_name, rock_
   return(global_flux_pg)
 }
 
-# -------------------------------
-# ROBUST MONTE CARLO WITH ECOLOGICAL CONSTRAINTS
-# -------------------------------
 montecarlo_robust <- function(model, data, mc_runs=100, dataset_name="", rock_type="") {
   
   cat("\n=== Robust Monte Carlo for", dataset_name, "===\n")
@@ -321,11 +272,9 @@ montecarlo_robust <- function(model, data, mc_runs=100, dataset_name="", rock_ty
     globalflux[i, names(perturbed_flux)] <- perturbed_flux
   }
   
-  # Apply strong ecological constraints
   mean_flux <- mean(as.matrix(globalflux), na.rm=TRUE)
   cat("Initial mean flux:", round(mean_flux, 2), "Pg C/year\n")
   
-  # Enforce ecological bounds
   if(rock_type == "Karst") {
     target_range <- c(25, 45)
     target_flux <- 35
@@ -352,18 +301,12 @@ montecarlo_robust <- function(model, data, mc_runs=100, dataset_name="", rock_ty
   return(globalflux)
 }
 
-# -------------------------------
-# RUN ROBUST MONTE CARLO
-# -------------------------------
 cat("\n=== RUNNING ROBUST MONTE CARLO SIMULATION ===\n")
 
 karst_global <- montecarlo_robust(m_karst, karst_srdb, mc_runs, "Karst", "Karst")
 nonkarst_global <- montecarlo_robust(m_nonkarst, nonkarst_srdb, mc_runs, "NonKarst", "Non-Karst")
 combined_global <- montecarlo_robust(m_combined, srdb, mc_runs, "Combined", "Combined")
 
-# -------------------------------
-# TREND ANALYSIS
-# -------------------------------
 analyze_trends <- function(globalflux, dataset_name="") {
   
   df <- as.data.frame(t(globalflux))
@@ -381,7 +324,6 @@ analyze_trends <- function(globalflux, dataset_name="") {
   flux_summary$lower_ci <- flux_summary$mean_flux - 1.96 * flux_summary$sd_flux / sqrt(mc_runs)
   flux_summary$upper_ci <- flux_summary$mean_flux + 1.96 * flux_summary$sd_flux / sqrt(mc_runs)
   
-  # Analysis periods
   periods <- list(
     period1 = c(1990, 2000),
     period2 = c(2000, 2010),
@@ -407,7 +349,6 @@ analyze_trends <- function(globalflux, dataset_name="") {
       
       relative_slope <- ifelse(period_mean > 0, (sm$coefficients[2,1] / period_mean) * 100, NA)
       
-      # Format p-value: < 0.001 if below threshold
       p_value_formatted <- ifelse(sm$coefficients[2,4] < 0.001, "< 0.001", 
                                  round(sm$coefficients[2,4], 3))
       
@@ -431,15 +372,11 @@ analyze_trends <- function(globalflux, dataset_name="") {
   ))
 }
 
-# Run analysis
 cat("\n=== TREND ANALYSIS ===\n")
 karst_trends <- analyze_trends(karst_global, "Karst")
 nonkarst_trends <- analyze_trends(nonkarst_global, "NonKarst")
 combined_trends <- analyze_trends(combined_global, "Combined")
 
-# -------------------------------
-# SAVE TREND STATISTICS TO CSV
-# -------------------------------
 save_trend_statistics <- function(trends_list, filename) {
   all_stats <- data.frame()
   
@@ -474,7 +411,6 @@ save_trend_statistics <- function(trends_list, filename) {
   return(all_stats)
 }
 
-# Save all trend statistics
 trends_list <- list(
   Karst = karst_trends,
   NonKarst = nonkarst_trends,
@@ -483,9 +419,6 @@ trends_list <- list(
 
 trend_stats <- save_trend_statistics(trends_list, "results/trend_statistics_all_periods.csv")
 
-# -------------------------------
-# VISUALIZATION FUNCTIONS FOR ALL TIME PERIODS
-# -------------------------------
 create_flux_plot_all_periods <- function(trends) {
   if(is.null(trends)) {
     return(ggplot() + 
@@ -495,22 +428,16 @@ create_flux_plot_all_periods <- function(trends) {
   
   df <- trends$summary
   
-  # Create base plot
   p <- ggplot(df, aes(x = year, y = mean_flux)) +
-    # Confidence intervals
     geom_ribbon(aes(ymin = pmax(lower_ci, 0), ymax = upper_ci), 
                 alpha = 0.3, fill = "steelblue") +
-    # Standard deviation
     geom_ribbon(aes(ymin = pmax(mean_flux - sd_flux, 0), ymax = mean_flux + sd_flux), 
                 alpha = 0.2, fill = "gray") +
-    # Main line and points
     geom_line(linewidth = 1.2, color = "black", alpha = 0.8) +
     geom_point(size = 2.5, color = "black", alpha = 0.8) +
     
-    # Add period dividers
     geom_vline(xintercept = c(2000, 2010), linetype = "dashed", color = "red", alpha = 0.7) +
     
-    # Labels and theme
     labs(
       title = paste("Global Soil Respiration -", trends$dataset_name, "Areas (1990-2022)"),
       subtitle = paste("Mean:", round(mean(df$mean_flux, na.rm = TRUE), 1), 
@@ -527,7 +454,6 @@ create_flux_plot_all_periods <- function(trends) {
       panel.grid.minor = element_blank()
     )
   
-  # Add trend lines for all periods
   if(length(trends$period_trends) > 0) {
     colors <- c("red", "darkorange", "purple", "darkgreen")
     i <- 1
@@ -535,7 +461,6 @@ create_flux_plot_all_periods <- function(trends) {
     for(pn in names(trends$period_trends)) {
       tr <- trends$period_trends[[pn]]
       
-      # Plot all trends, not just significant ones
       pred_year <- seq(tr$range[1], tr$range[2], length.out = 50)
       period_data <- df[df$year >= tr$range[1] & df$year <= tr$range[2], ]
       
@@ -545,11 +470,9 @@ create_flux_plot_all_periods <- function(trends) {
         
         pred_data <- data.frame(year = pred_year, value = pred_values)
         
-        # Add trend line
         line_alpha <- ifelse(tr$p_value < 0.05, 0.8, 0.4)
         line_size <- ifelse(tr$p_value < 0.05, 1.5, 1.0)
         
-        # Use formatted p-value for display
         p_display <- tr$p_value_formatted
         
         p <- p + 
@@ -569,7 +492,6 @@ create_flux_plot_all_periods <- function(trends) {
   return(p)
 }
 
-# Create individual period plots - FIXED FUNCTION
 create_period_plots <- function(trends) {
   if(is.null(trends)) return(list())
   
@@ -588,7 +510,6 @@ create_period_plots <- function(trends) {
     period_data <- df[df$year >= period_range[1] & df$year <= period_range[2], ]
     
     if(nrow(period_data) > 0) {
-      # Get trend statistics for this period - FIXED LOGIC
       period_key <- switch(period_name,
                           "1990-2000" = "period1",
                           "2000-2010" = "period2",
@@ -615,7 +536,6 @@ create_period_plots <- function(trends) {
           axis.text = element_text(size = 8)
         )
       
-      # Add trend line if available
       if(!is.null(period_trend)) {
         pred_year <- seq(period_range[1], period_range[2], length.out = 50)
         base_value <- mean(period_data$mean_flux, na.rm = TRUE)
@@ -623,7 +543,6 @@ create_period_plots <- function(trends) {
         
         pred_data <- data.frame(year = pred_year, value = pred_values)
         
-        # Use formatted p-value
         p_display <- period_trend$p_value_formatted
         
         p <- p + 
@@ -644,9 +563,6 @@ create_period_plots <- function(trends) {
   return(plots)
 }
 
-
-
-# Create individual period plots - CORRECTED FUNCTION
 create_period_plots <- function(trends) {
   if(is.null(trends)) return(list())
   
@@ -665,7 +581,6 @@ create_period_plots <- function(trends) {
     period_data <- df[df$year >= period_range[1] & df$year <= period_range[2], ]
     
     if(nrow(period_data) > 0) {
-      # Get trend statistics for this period
       period_key <- switch(period_name,
                           "1990-2000" = "period1",
                           "2000-2010" = "period2", 
@@ -692,7 +607,6 @@ create_period_plots <- function(trends) {
           axis.text = element_text(size = 8)
         )
       
-      # Add trend line if available
       if(!is.null(period_trend)) {
         pred_year <- seq(period_range[1], period_range[2], length.out = 50)
         base_value <- mean(period_data$mean_flux, na.rm = TRUE)
@@ -700,7 +614,6 @@ create_period_plots <- function(trends) {
         
         pred_data <- data.frame(year = pred_year, value = pred_values)
         
-        # Use formatted p-value
         p_display <- period_trend$p_value_formatted
         
         p <- p + 
@@ -721,7 +634,6 @@ create_period_plots <- function(trends) {
   return(plots)
 }
 
-# CREATE COMPARISON PLOT - CORRECTED FUNCTION
 create_comparison_plot <- function(karst_trends, nonkarst_trends, combined_trends) {
   # Combine all data
   all_data <- bind_rows(
@@ -730,7 +642,6 @@ create_comparison_plot <- function(karst_trends, nonkarst_trends, combined_trend
     combined_trends$summary %>% mutate(Region = "Global")
   )
   
-  # Colors for regions
   region_colors <- c("Karst" = "#E41A1C", "Non-Karst" = "#377EB8", "Global" = "#4DAF4A")
   
   p <- ggplot(all_data, aes(x = year, y = mean_flux, color = Region, fill = Region)) +
@@ -739,7 +650,6 @@ create_comparison_plot <- function(karst_trends, nonkarst_trends, combined_trend
     geom_line(linewidth = 1.2) +
     geom_point(size = 2, alpha = 0.8) +
     
-    # Add period dividers
     geom_vline(xintercept = c(2000, 2010), linetype = "dashed", color = "gray", alpha = 0.7) +
     
     scale_color_manual(values = region_colors) +
@@ -766,7 +676,6 @@ create_comparison_plot <- function(karst_trends, nonkarst_trends, combined_trend
   return(p)
 }
 
-# CREATE SUMMARY BARPLOT - CORRECTED FUNCTION
 create_summary_barplot <- function(karst_trends, nonkarst_trends, combined_trends) {
   summary_data <- data.frame(
     Region = c("Karst", "Non-Karst", "Global"),
@@ -810,7 +719,6 @@ create_summary_barplot <- function(karst_trends, nonkarst_trends, combined_trend
   return(p)
 }
 
-# RESULTS SUMMARY FUNCTION - CORRECTED
 check_flux_summary <- function(trends) {
   if(is.null(trends)) return()
   
@@ -845,8 +753,6 @@ check_flux_summary <- function(trends) {
 }
 
 
-
-# Create individual period plots
 karst_period_plots <- create_period_plots(karst_trends)
 nonkarst_period_plots <- create_period_plots(nonkarst_trends)
 combined_period_plots <- create_period_plots(combined_trends)
@@ -889,9 +795,6 @@ check_flux_summary(nonkarst_trends)
 check_flux_summary(combined_trends)
 
 
-# -------------------------------
-# RESULTS SUMMARY FUNCTION
-# -------------------------------
 check_flux_summary <- function(trends) {
   if(is.null(trends)) return()
   
@@ -925,9 +828,7 @@ check_flux_summary <- function(trends) {
   }
 }
 
-# -------------------------------
-# FINAL RESULTS
-# -------------------------------
+
 cat("\n", rep("=", 60), "\n", sep="")
 cat("FINAL RESULTS - SOC-STOCK SCALING CORRECTED")
 cat("\n", rep("=", 60), "\n", sep="")
@@ -974,9 +875,6 @@ if(all(final_means >= c(25, 55, 80) & final_means <= c(45, 85, 110))) {
   cat("\n⚠ Some estimates need adjustment\n")
 }
 
-# -------------------------------
-# SAVE FINAL RESULTS
-# -------------------------------
 cat("\n=== SAVING FINAL RESULTS ===\n")
 
 # Save trend results
