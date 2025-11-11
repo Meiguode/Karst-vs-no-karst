@@ -467,7 +467,3 @@ for (period_name in names(time_periods)) {
     cat("Insufficient data for plot in period:", period_name, "(less than 5 rows)\n")
   }
 }
-
-cat("All time period plots completed!\n")
-
-
