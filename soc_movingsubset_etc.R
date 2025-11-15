@@ -77,7 +77,7 @@ barplot = ggplot(winresult, aes(x = SOC.Area, y = Slope)) +
   star + 
   count + 
   labs(
-    x = expression(paste("SOC Stock (g C m"^{-2}, ")")),
+    x = expression(paste("SOC Stock (Mg ha"^{-1}, ")")),
     y = expression(paste("Change in R"["s"], " (g C m"^{-2}, " yr"^{-2}, ")"))
   ) +
   ggtitle("(c)") +
@@ -206,8 +206,6 @@ cat("- SOC_100-180.pdf/png\n")
 cat("- SOC_180-270.pdf/png\n")
 cat("- SOC_270+.pdf/png\n")
 
-# SOC interval analysis with time period breakdown
-# Define time periods including full period
 time_periods <- list(
   list(name = "1990-2000", start = 1990, end = 2000),
   list(name = "2000-2010", start = 2000, end = 2010),
@@ -240,7 +238,6 @@ extract_regression_results <- function(soc_data, interval_name) {
   return(NULL)
 }
 
-# Function to analyze by time period
 analyze_time_period <- function(soc_data, interval_name, period) {
   period_data <- soc_data %>% 
     filter(Study_midyear >= period$start & Study_midyear <= period$end)
@@ -371,3 +368,116 @@ comprehensive_time_analysis <- do.call(rbind, lapply(1:4, function(i) {
 }))
 
 write.csv(comprehensive_time_analysis, "SOC_time_period_comprehensive_results.csv", row.names = FALSE)
+
+
+
+
+# Moving window for karst, due to different SOC levels available
+#Moving window SOC karst
+source("0_functions_plot.R")
+source("4_statistical_prep.R")
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+
+cols <- c("#0000a2", "#bc272d", "#e9c716", "#50ad9f")
+mycolors <- colorRampPalette(cols)
+
+rcdata <- work.data %>% 
+  select(SOC_stock, Rs_annual, Study_midyear) %>%
+  filter(!is.na(SOC_stock), !is.na(Rs_annual), !is.na(Study_midyear))
+
+t_start <- 60
+t_end   <- 380
+q       <- 60
+p       <- 10
+
+SOC.Area <- c()
+Slope <- c()
+P.value <- c()
+Num <- c()
+Mid.SOC <- c()
+
+mblm_eqn <- function(df){
+  if(nrow(df) < 5){
+    return(c(NA, NA))
+  }
+  model <- mblm::mblm(Rs_annual ~ Study_midyear, df)
+  slope <- coef(model)[2]
+  pval <- summary(model)$coefficients[2,4]
+  return(c(slope, pval))
+}
+
+t <- t_start
+
+while(t <= t_end){
+  
+  win <- rcdata %>% 
+    filter(SOC_stock >= (t - q) & SOC_stock < t)
+  
+  SOC.Area <- c(SOC.Area, paste0(t - q, "-", t))
+  Mid.SOC <- c(Mid.SOC, t - q/2)
+  Num <- c(Num, nrow(win))
+  
+  eq <- mblm_eqn(win)
+  Slope  <- c(Slope,  eq[1])
+  P.value <- c(P.value, eq[2])
+  
+  t <- t + p
+}
+
+winresult <- data.frame(
+  SOC.Area = SOC.Area,
+  Slope = Slope,
+  P.value = P.value,
+  Num = Num,
+  Mid.SOC = Mid.SOC
+)
+
+winresult <- winresult %>% filter(!is.na(Slope))
+
+# significance stars
+winresult <- winresult %>% 
+  mutate(
+    sig = case_when(
+      P.value < 0.001 ~ "***",
+      P.value < 0.01  ~ "**",
+      P.value < 0.05  ~ "*",
+      TRUE ~ ""
+    )
+  )
+
+TS <- theme(
+  text = element_text(size = 6),
+  legend.position = "none",
+  axis.text.x = element_text(angle = 45, size = 5, hjust = 1),
+  panel.background = element_blank(),
+  panel.border = element_rect(colour = "black", fill = NA, linewidth = 0.5),
+  axis.text.y = element_text(size = 6)
+)
+
+star_p <- winresult$Slope - 5
+
+barplot <- ggplot(winresult, aes(x = SOC.Area, y = Slope)) +
+  geom_col(aes(fill = SOC.Area), alpha = 0.85, color = "black", linewidth = 0.1) +
+  TS +
+  scale_fill_manual(values = mycolors(nrow(winresult))) +
+  geom_text(aes(label = sig, y = star_p), size = 2.1) +
+  geom_text(aes(label = Num, y = 100), size = 1.6) +
+  labs(
+    x = expression(paste("SOC Stock (Mg ha"^{-1}, ")")),
+    y = expression(paste("Change in R"["s"], " (g C m"^{-2}, " yr"^{-2}, ")"))
+  ) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+if(!dir.exists("figures")) dir.create("figures")
+
+ggsave("figures/fig3_c.pdf",  barplot, width = 6.5, height = 2, units = "in", dpi = 900)
+ggsave("figures/fig3_c.png",  barplot, width = 6.5, height = 2, units = "in", dpi = 900)
+ggsave("figures/fig3_c.tiff", barplot, width = 6.5, height = 2, units = "in", dpi = 900, compression = "lzw")
+
+cat("SOC window analysis plot created.\n")
+cat("SOC bins: ", nrow(winresult), "\n")
