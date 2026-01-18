@@ -1,23 +1,74 @@
-source("0_functions_plot.R")
-res.data <- read.csv("complete_data.csv",check.names=FALSE)
-res.data <- filter(res.data,
-                   Study_midyear>=1990,
-                   Meas_method %in% c('IRGA','Gas Chromatography') 
-                   &Ecosystem_type != 'Agriculture'
-                   & Outlier == 0)
+library(dplyr)
 
-dv = c('Rs_annual')
-idv = c('Study_midyear','Latitude','Biome',
-        'MAT','MAP', 'delta.Mean.Temp.','MAP','delta.Mean.Precip.', 'SOC_stock',
-        'Meas_method','Ecosystem_type2','Partition_method','Stage','Elevation')
+datasets <- list(
+  "Non-karst" = "03_processed_data_complete_final_nonkarst.csv",
+  "Karst"     = "03_processed_data_complete_final_karst.csv",
+  "Combined"  = "03_processed_data_complete_final.csv"
+)
 
-work.data = na.omit(res.data[,c(idv,dv)])
-work.data <- droplevels(work.data)
+prep_filter <- function(file) {
 
-work.data$Year = as.character(lapply(work.data$Study_midyear,labelYear1)) %>% as.factor()
-work.data$Year2 = as.character(lapply(work.data$Study_midyear,labelYear2)) %>% as.factor()
-boreal = filter(work.data, Biome == "boreal"|Biome == "Arctic")
-Temperate = filter(work.data, Biome == "Temperate"|Biome == "Mediterranean" )
-Tropical = filter(work.data, Biome == "Tropical" | Biome == "Subtropical")
-Bef2008 = filter(work.data, Year2 == "1990-2010" )
-Post2008 = filter(work.data, Year2 == "2010-2022" )
+  df <- read.csv(file, stringsAsFactors = FALSE)
+
+  df %>%
+    filter(
+      Study_midyear >= 1990,
+      Meas_method %in% c("IRGA", "Gas Chromatography"),
+      Ecosystem_type != "Cropland",
+      Outlier == 0,
+      !is.na(Rs_annual),
+      !is.na(Study_midyear),
+
+      Rs_annual > 0,
+      Rs_annual <= 5000
+    )
+}
+prepped <- lapply(datasets, prep_filter)
+
+add_breakpoint_periods <- function(df, dataset_name) {
+
+  if (dataset_name %in% c("Combined", "Non-karst")) {
+
+    df %>%
+      mutate(
+        Period = case_when(
+          Study_midyear < 2013 ~ "Pre-breakpoint",
+          Study_midyear <= 2016 ~ "Breakpoint",
+          TRUE ~ "Post-breakpoint"
+        )
+      )
+
+  } else if (dataset_name == "Karst") {
+
+    df %>%
+      mutate(
+        Period = case_when(
+          Study_midyear < 2009 ~ "Pre-breakpoint",
+          Study_midyear <= 2014 ~ "Breakpoint",
+          TRUE ~ "Post-breakpoint"
+        )
+      )
+  }
+}
+
+prepped <- mapply(
+  add_breakpoint_periods,
+  prepped,
+  names(prepped),
+  SIMPLIFY = FALSE
+)
+
+nonkarst <- prepped[["Non-karst"]]
+karst    <- prepped[["Karst"]]
+combined <- prepped[["Combined"]]
+
+cat("\nRows after prep:\n")
+cat("Non-karst:", nrow(nonkarst), "\n")
+cat("Karst:", nrow(karst), "\n")
+cat("Combined:", nrow(combined), "\n")
+
+cat("\nPeriod distribution:\n")
+print(lapply(list(nonkarst = nonkarst,
+                  karst = karst,
+                  combined = combined),
+             function(df) table(df$Period)))
